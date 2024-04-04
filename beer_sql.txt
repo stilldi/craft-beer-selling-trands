@@ -1,0 +1,141 @@
+-- Re-creating a transaction table with an automatic primary key and a foreign key into the product directory.
+
+CREATE TABLE new_transactions (
+    transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Date_and_time_of_unloading TEXT NOT NULL,
+    Product_code INTEGER NOT NULL,
+    Amount REAL NOT NULL,
+    Sale_amount REAL NULL,
+    Discount_amount REAL NULL,
+    Profit REAL NULL,
+    Percentage_markup REAL NULL,
+    Discount_percentage REAL NULL,
+    FOREIGN KEY (Product_code) REFERENCES product(Product_code)
+);
+INSERT INTO new_transactions (
+    Date_and_time_of_unloading,
+    Product_code,
+    Amount,
+    Sale_amount,
+    Discount_amount,
+    Profit,
+    Percentage_markup,
+    Discount_percentage
+)
+SELECT 
+    Date_and_time_of_unloading,
+    Product_code,
+    Amount,
+    Sale_amount,
+    Discount_amount,
+    Profit,
+    Percentage_markup,
+    Discount_percentage
+FROM transactions ;
+
+DROP TABLE transactions;
+ALTER TABLE new_transactions RENAME TO transactions;
+
+-- Number of SKUs by vendor
+
+WITH SKU_by_country AS(
+     SELECT Country_of_Origin,
+            COUNT(Vendor_code) Manufacturer_Count,
+            COUNT(Product_code) AS Product_Count
+     FROM product
+     GROUP BY Country_of_Origin
+     ORDER BY Product_Count DESC
+)
+SELECT Country_of_Origin,
+       Manufacturer_Count,
+       Product_Count,
+       (Manufacturer_Count - Product_Count) AS Difference
+FROM SKU_by_country
+ORDER BY Manufacturer_Count DESC;
+
+-- Average price by country of origin
+
+SELECT 
+    Country_of_Origin, 
+    ROUND(AVG(CAST(Retail_price AS INT))) AS Avg_Price
+FROM 
+    product p
+GROUP BY 
+    Country_of_Origin
+ORDER BY 
+    Avg_Price;
+
+-- Top-10 manufacturers by number of sales for the entire period
+   
+WITH amount_by_country AS(
+	SELECT p.Country_of_Origin,
+	    ROUND(SUM (t.Amount), 2) AS Amount_Sum
+	FROM transactions t
+	JOIN 
+  		product p ON p.Product_code = t.Product_code 
+	GROUP BY Country_of_Origin),
+ranking_by_country AS(
+     SELECT Country_of_Origin,
+            Amount_Sum,
+            ROW_NUMBER() OVER (ORDER BY Amount_Sum DESC) AS Rating
+     FROM amount_by_country
+)
+SELECT 
+    Country_of_Origin,
+    Amount_Sum
+FROM ranking_by_country
+WHERE Rating <= 10
+ORDER BY 
+    Amount_Sum DESC;
+
+  -- Number of sales by manufacturers by year
+  
+SELECT 
+    p.Country_of_Origin,
+    ROUND(SUM(CASE WHEN SUBSTRING(t.Date_and_time_of_unloading, 1, 4) = '2020' THEN t.Amount ELSE 0 END))AS Amount_2020,
+    ROUND(SUM(CASE WHEN SUBSTRING(t.Date_and_time_of_unloading, 1, 4) = '2021' THEN t.Amount ELSE 0 END)) AS Amount_2021,
+    ROUND(SUM(CASE WHEN SUBSTRING(t.Date_and_time_of_unloading, 1, 4) = '2022' THEN t.Amount ELSE 0 END)) AS Amount_2022
+FROM 
+    transactions t
+JOIN 
+    product p ON p.Product_code = t.Product_code
+GROUP BY 
+    p.Country_of_Origin;
+    
+-- Profit and revenue by quarter
+   
+SELECT
+    strftime('%Y', Date_and_time_of_unloading) AS Year,
+    CASE 
+        WHEN strftime('%m', Date_and_time_of_unloading) IN ('01', '02', '03') THEN 'Q1'
+        WHEN strftime('%m', Date_and_time_of_unloading) IN ('04', '05', '06') THEN 'Q2'
+        WHEN strftime('%m', Date_and_time_of_unloading) IN ('07', '08', '09') THEN 'Q3'
+        WHEN strftime('%m', Date_and_time_of_unloading) IN ('10', '11', '12') THEN 'Q4'
+        ELSE NULL
+    END AS Quarter,
+    ROUND(SUM(t.Sale_amount)) AS Sale_amount_by_quarter,
+    ROUND(SUM(t.Profit)) AS Profit_by_quarter,
+    ROUND(SUM(t.Profit) / SUM(t.Sale_amount) * 100) AS Persent
+FROM 
+    transactions t
+JOIN 
+    product p ON p.Product_code = t.Product_code
+GROUP BY 
+    Year, Quarter;
+    
+-- Moving average by month
+
+SELECT
+    strftime('%Y', Date_and_time_of_unloading) AS Year,
+    strftime('%m', Date_and_time_of_unloading) AS Month,
+    ROUND(SUM(t.Sale_amount)) AS Sale_amount_by_month,
+    ROUND(SUM(t.Profit)) AS Profit_by_month,
+    ROUND(AVG(SUM(t.Sale_amount)) OVER (ORDER BY strftime('%Y-%m', Date_and_time_of_unloading) ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS Moving_average_sale,
+    ROUND(AVG(SUM(t.Profit)) OVER (ORDER BY strftime('%Y-%m', Date_and_time_of_unloading) ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS Moving_average_profit
+FROM 
+    transactions t
+JOIN 
+    product p ON p.Product_code = t.Product_code
+GROUP BY 
+    Year, Month;
+    

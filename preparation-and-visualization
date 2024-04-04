@@ -1,0 +1,68 @@
+# Did some preparation in Python.
+
+import pandas as pd
+import sqlite3
+
+# reading data from CSV files into a DataFrame
+dfp = pd.read_csv('Product_range.csv')
+dft = pd.read_csv('Transactions.csv')
+# connection to SQLite database
+conn = sqlite3.connect('craft_beer_data.db')
+cur = conn.cursor()
+# write DataFrame to SQLite databases
+dfp.to_sql('product', conn, if_exists='replace', index=False)
+dft.to_sql('transactions', conn, if_exists='replace', index=False)
+#️ reading data from a table
+datat_test = cur.execute('select * from transactions')
+datap_test = cur.execute('select * from product')
+conn.commit()
+cur.fetchall()
+# close the connection
+conn.close()
+
+# Average price visualization by country
+
+conn = sqlite3.connect('craft_beer_data.db')
+# SQL query to read results into DataFrame
+query = "SELECT Country_of_Origin, ROUND(AVG(CAST(Retail_price AS INT))) AS Avg_Price FROM product p GROUP BY Country_of_Origin ORDER BY Avg_Price;"
+df_avg_pr = pd.read_sql_query(query, conn)
+conn.close()
+# viz
+ax = df_avg_pr.plot(kind='barh', color='orange')
+ax.tick_params(axis='x', labelsize=10)
+ax.tick_params(axis='y', labelsize=9)
+ax.set_xlabel('аverage price', fontsize=12)
+ax.set_ylabel('country of origin', fontsize=12)
+ax.set_yticklabels(df_avg_pr['Country_of_Origin'])
+ax.grid(True, which='both', axis='x', color='gray', linestyle='--', linewidth=0.4)
+plt.tight_layout()
+plt.show()
+
+# Sales and profit visualization
+
+conn = sqlite3.connect('craft_beer_data.db')
+query = "SELECT strftime('%Y', Date_and_time_of_unloading) AS Year, CASE WHEN strftime('%m', Date_and_time_of_unloading) IN ('01', '02', '03') THEN 'Q1' WHEN strftime('%m', Date_and_time_of_unloading) IN ('04', '05', '06') THEN 'Q2' WHEN strftime('%m', Date_and_time_of_unloading) IN ('07', '08', '09') THEN 'Q3' WHEN strftime('%m', Date_and_time_of_unloading) IN ('10', '11', '12') THEN 'Q4' ELSE NULL END AS Quarter, ROUND(SUM(t.Sale_amount)) AS Sale_amount_by_quarter, ROUND(SUM(t.Profit)) AS Profit_by_quarter, ROUND(SUM(t.Profit) / SUM(t.Sale_amount) * 100) AS Persent FROM transactions t JOIN product p ON p.Product_code = t.Product_code GROUP BY Year, Quarter;"
+df_sale_profit = pd.read_sql_query(query, conn)
+conn.close()
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+plt.figure(figsize=(10, 6))
+plt.plot(range(len(df_sale_profit['Year'])), df_sale_profit['Sale_amount_by_quarter'], marker='o', label='Sales', color='y')
+plt.plot(range(len(df_sale_profit['Year'])), df_sale_profit['Profit_by_quarter'], marker='o', label='Profit', color='g')
+
+# axes
+plt.xticks(range(len(df_sale_profit['Year'])), [f"{df_sale_profit['Year'][i]} {df_sale_profit['Quarter'][i]}" for i in range(len(df_sale_profit['Year']))])
+plt.xlabel('Year Q')
+plt.ylabel('Sum')
+plt.title('Sales and Profit by Quarter')
+
+plt.legend()
+plt.ylim(0, 10000000)
+
+plt.grid(True)
+
+formatter = FuncFormatter(lambda x, _: format(int(x), ','))  
+plt.gca().yaxis.set_major_formatter(formatter)
+plt.show()
+
